@@ -502,7 +502,7 @@ function openTx(id){
       <button data-t="수입" onclick="setTxType('수입')">수입</button>
       <button data-t="이체" onclick="setTxType('이체')">이체</button>
     </div>
-    <div class="fld"><label>금액</label><input class="amt-in" id="f_amount" inputmode="numeric" placeholder="0" value="${t?t.amount:''}"></div>
+    <div class="fld"><label>금액</label><input class="amt-in" id="f_amount" inputmode="numeric" placeholder="0" oninput="fmtAmount(this)" value="${t?Number(t.amount).toLocaleString('ko-KR'):''}"></div>
     <div id="f_dynamic"></div>
     <div class="fld"><label>날짜</label><input type="date" id="f_date" value="${t?t.date:iso(0)}"></div>
     <div class="fld"><label>내용 (선택)</label><input id="f_memo" placeholder="예: 점심, 편의점" value="${t?esc(t.memo):''}"></div>
@@ -539,6 +539,7 @@ function setTxType(type,t){
   document.getElementById('f_instwrap').style.display=type==='지출'?'block':'none';
 }
 function val(id){const e=document.getElementById(id);return e?e.value:''}
+function fmtAmount(el){const v=el.value.replace(/[^0-9]/g,'');el.value=v?Number(v).toLocaleString('ko-KR'):''}
 function saveTx(id){
   const amount=Math.round(Number(String(val('f_amount')).replace(/[^0-9.-]/g,'')));
   if(!amount||amount<=0){toast('금액을 입력하세요');return}
@@ -559,7 +560,7 @@ function delTx(id){db.transactions=db.transactions.filter(t=>t.id!==id);save();c
 function openSettle(cardId){
   const prev=addMonth(selMonth,-1);const amt=cardUsage(cardId,prev);
   openTx();setTxType('이체');
-  document.getElementById('f_amount').value=amt||'';
+  document.getElementById('f_amount').value=amt?Number(amt).toLocaleString('ko-KR'):'';
   const trCat=db.categories.find(c=>c.name==='카드대금 상환');
   setTimeout(()=>{const to=document.getElementById('f_to');if(to)to.value=cardId;const c=document.getElementById('f_cat');if(c&&trCat)c.value=trCat.id;
     document.getElementById('f_memo').value=prev.replace('-','.')+' 카드대금';},0);
