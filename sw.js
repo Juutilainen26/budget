@@ -1,4 +1,4 @@
-const CACHE = 'gagyebu-v1';
+const CACHE = 'gagyebu-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -21,14 +21,25 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.match(e.request).then(hit => {
-      if (hit) return hit;
-      return fetch(e.request).then(res => {
+  const url = new URL(e.request.url);
+  const sameOrigin = url.origin === self.location.origin;
+  if (sameOrigin) {
+    // 앱 파일: 네트워크 우선(업데이트 즉시 반영), 오프라인이면 캐시로 대체
+    e.respondWith(
+      fetch(e.request).then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
         return res;
-      }).catch(() => hit);
-    })
-  );
+      }).catch(() => caches.match(e.request).then(h => h || caches.match('./index.html')))
+    );
+  } else {
+    // 외부 라이브러리(CDN): 캐시 우선
+    e.respondWith(
+      caches.match(e.request).then(h => h || fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        return res;
+      }))
+    );
+  }
 });

@@ -108,6 +108,11 @@ canvas{max-width:100%}
 .legend .li:last-child{border-bottom:none}
 .dot{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:8px}
 .link{color:var(--brand);font-weight:600}
+.searchbar{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:12px;box-shadow:var(--shadow);padding:10px 12px;margin-bottom:10px}
+.searchbar .si{font-size:15px;color:var(--sub)}
+.searchbar input{flex:1;border:none;background:transparent;font-size:15px;color:var(--ink);outline:none;font-family:inherit}
+.searchbar button{border:none;background:var(--line);color:var(--sub);width:22px;height:22px;border-radius:50%;font-size:12px;flex:none}
+#searchSummary{font-size:12px;color:var(--brand);font-weight:700;margin:0 4px 8px;display:none}
 input[type=file]{display:none}
 </style>
 </head>
@@ -139,6 +144,12 @@ input[type=file]{display:none}
 
   <!-- 내역 -->
   <section class="view hidden" id="v-list">
+    <div class="searchbar">
+      <span class="si">🔍</span>
+      <input id="searchBox" placeholder="내용·카테고리·금액 검색 (전체 기간)" oninput="onSearch(this.value)" autocomplete="off">
+      <button id="searchClear" onclick="clearSearch()" style="display:none">✕</button>
+    </div>
+    <div id="searchSummary"></div>
     <div class="card"><div id="listBody"></div></div>
   </section>
 
@@ -255,6 +266,7 @@ const wonS=n=>(n<0?'-':'')+'₩'+Math.abs(Math.round(n)).toLocaleString('ko-KR')
 /* ---------- 상태 ---------- */
 let selMonth=(()=>{const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')})();
 let curView='home';
+let searchQuery='';
 
 function go(v){curView=v;
   document.querySelectorAll('.view').forEach(s=>s.classList.add('hidden'));
@@ -296,7 +308,6 @@ function renderHome(){
   });
   document.getElementById('cardStatus').innerHTML=ch;
   const list=document.getElementById('accList');
-  const banks=[...new Set(db.accounts.map(a=>a.bank))];
   let h='';
   db.accounts.slice().sort((a,b)=>a.sort-b.sort).forEach(a=>{
     const bal=accBalance(a.id);const isCard=a.type==='신용카드';
@@ -306,29 +317,54 @@ function renderHome(){
   });
   list.innerHTML=h;
 }
+function txRow(t){
+  let sub='',cls='a-tr',sign='';
+  if(t.type==='지출'){cls='a-exp';sign='-';sub=(t.cat?cat(t.cat)?.name:'')+' · '+(t.from?acc(t.from)?.name:'');}
+  else if(t.type==='수입'){cls='a-inc';sign='+';sub=(t.cat?cat(t.cat)?.name:'')+' · '+(t.to?acc(t.to)?.name:'');}
+  else{sub=(t.from?acc(t.from)?.name:'')+' → '+(t.to?acc(t.to)?.name:'');}
+  if(t.fx)sub+=' · '+esc(t.fx);
+  return `<div class="tx" onclick="openTx('${t.id}')"><div><div class="li">${esc(t.memo||(t.type==='이체'?'이체':(t.cat?cat(t.cat)?.name:t.type)))}</div>
+    <div class="sub">${esc(sub)}</div></div><div class="amt ${cls}">${sign}${won(t.amount)}</div></div>`;
+}
 function renderList(){
-  const tx=monthTx(selMonth).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
   const body=document.getElementById('listBody');
-  if(!tx.length){body.innerHTML='<div class="empty">이 달의 거래가 없어요.<br>아래 ＋ 버튼으로 추가하세요.</div>';return}
+  const summary=document.getElementById('searchSummary');
+  const clearBtn=document.getElementById('searchClear');
+  const mn=document.getElementById('monthNav');
+  const searching=!!searchQuery;
+  if(clearBtn)clearBtn.style.display=searching?'block':'none';
+  if(mn)mn.style.visibility=searching?'hidden':'visible';
+  let tx;
+  if(searching){
+    const q=searchQuery.toLowerCase();
+    const num=searchQuery.replace(/[^0-9]/g,'');
+    tx=db.transactions.filter(t=>{
+      const hay=[t.memo,t.fx,t.inst,t.cat?cat(t.cat)?.name:'',t.from?acc(t.from)?.name:'',t.to?acc(t.to)?.name:'',t.type].join(' ').toLowerCase();
+      if(hay.includes(q))return true;
+      if(num&&String(t.amount).includes(num))return true;
+      return false;
+    }).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+    const exp=tx.filter(t=>t.type==='지출').reduce((s,t)=>s+t.amount,0);
+    summary.style.display='block';
+    summary.textContent=tx.length?`검색 ${tx.length}건 · 지출합계 ${won(exp)}`:'';
+  }else{
+    summary.style.display='none';summary.textContent='';
+    tx=monthTx(selMonth).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+  }
+  if(!tx.length){body.innerHTML=searching?'<div class="empty">검색 결과가 없어요.</div>':'<div class="empty">이 달의 거래가 없어요.<br>아래 ＋ 버튼으로 추가하세요.</div>';return}
   const byDay={};tx.forEach(t=>{(byDay[t.date]=byDay[t.date]||[]).push(t)});
   let h='';
   Object.keys(byDay).sort((a,b)=>b.localeCompare(a)).forEach(d=>{
     const items=byDay[d];
     const dexp=items.filter(t=>t.type==='지출').reduce((s,t)=>s+t.amount,0);
-    h+=`<div class="daygroup"><div class="dayhead"><span>${fmtDay(d)}</span><span>지출 ${won(dexp)}</span></div>`;
-    items.forEach(t=>{
-      let sub='',cls='a-tr',sign='';
-      if(t.type==='지출'){cls='a-exp';sign='-';sub=(t.cat?cat(t.cat)?.name:'')+' · '+(t.from?acc(t.from)?.name:'');}
-      else if(t.type==='수입'){cls='a-inc';sign='+';sub=(t.cat?cat(t.cat)?.name:'')+' · '+(t.to?acc(t.to)?.name:'');}
-      else{sub=(t.from?acc(t.from)?.name:'')+' → '+(t.to?acc(t.to)?.name:'');}
-      if(t.fx)sub+=' · '+esc(t.fx);
-      h+=`<div class="tx" onclick="openTx('${t.id}')"><div><div class="li">${esc(t.memo||(t.type==='이체'?'이체':(t.cat?cat(t.cat)?.name:t.type)))}</div>
-        <div class="sub">${esc(sub)}</div></div><div class="amt ${cls}">${sign}${won(t.amount)}</div></div>`;
-    });
+    h+=`<div class="daygroup"><div class="dayhead"><span>${searching?fmtDayFull(d):fmtDay(d)}</span><span>지출 ${won(dexp)}</span></div>`;
+    items.forEach(t=>{h+=txRow(t)});
     h+='</div>';
   });
   body.innerHTML=h;
 }
+function onSearch(v){searchQuery=v.trim();renderList()}
+function clearSearch(){searchQuery='';const b=document.getElementById('searchBox');if(b)b.value='';renderList()}
 let pieChart,barChart;
 function renderStat(){
   const tx=monthTx(selMonth).filter(t=>t.type==='지출');
@@ -372,6 +408,7 @@ function renderSet(){document.getElementById('accCount').textContent=db.accounts
 /* ---------- 유틸 ---------- */
 function esc(s){return(s==null?'':String(s)).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function fmtDay(d){const[y,m,dd]=d.split('-');const w=['일','월','화','수','목','금','토'][new Date(d).getDay()];return`${Number(m)}월 ${Number(dd)}일 (${w})`}
+function fmtDayFull(d){const[y,m,dd]=d.split('-');const w=['일','월','화','수','목','금','토'][new Date(d).getDay()];return`${y}.${Number(m)}.${Number(dd)} (${w})`}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600)}
 function closeModal(){document.getElementById('modalRoot').innerHTML=''}
 function modal(html){document.getElementById('modalRoot').innerHTML=`<div class="sheet-bg" onclick="if(event.target===this)closeModal()"><div class="sheet"><button class="close" onclick="closeModal()">✕</button>${html}</div></div>`}
