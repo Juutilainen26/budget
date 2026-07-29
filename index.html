@@ -438,17 +438,22 @@ function setTxType(type,t){
   txType=type;
   document.querySelectorAll('#segType button').forEach(b=>b.classList.toggle('on',b.dataset.t===type));
   const dyn=document.getElementById('f_dynamic');
+  const st=db.settings||(db.settings={});
+  const exists=id=>id&&db.accounts.some(a=>a.id===id);
+  const defFrom = t ? t.from : (exists(st.lastFrom)?st.lastFrom:null);
+  let defTo = t ? t.to : (exists(st.lastTo)?st.lastTo:null);
   const accOpts=(sel)=>db.accounts.slice().sort((a,b)=>a.sort-b.sort).map(a=>`<option value="${a.id}" ${sel===a.id?'selected':''}>${esc(a.name)}</option>`).join('');
   const catOpts=(kind,sel)=>db.categories.filter(c=>c.kind===kind).sort((a,b)=>a.sort-b.sort).map(c=>`<option value="${c.id}" ${sel===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
   if(type==='지출'){
     dyn.innerHTML=`<div class="fld"><label>카테고리</label><select id="f_cat">${catOpts('지출',t?.cat)}</select></div>
-      <div class="fld"><label>결제 수단 (출금계좌)</label><select id="f_from">${accOpts(t?.from)}</select></div>`;
+      <div class="fld"><label>결제 수단 (출금계좌)</label><select id="f_from">${accOpts(defFrom)}</select></div>`;
   }else if(type==='수입'){
     dyn.innerHTML=`<div class="fld"><label>카테고리</label><select id="f_cat">${catOpts('수입',t?.cat)}</select></div>
-      <div class="fld"><label>입금 계좌</label><select id="f_to">${accOpts(t?.to)}</select></div>`;
+      <div class="fld"><label>입금 계좌</label><select id="f_to">${accOpts(defTo)}</select></div>`;
   }else{
-    dyn.innerHTML=`<div class="two"><div class="fld"><label>보내는 계좌</label><select id="f_from">${accOpts(t?.from)}</select></div>
-      <div class="fld"><label>받는 계좌</label><select id="f_to">${accOpts(t?.to)}</select></div></div>
+    if(!t&&defTo===defFrom)defTo=null;
+    dyn.innerHTML=`<div class="two"><div class="fld"><label>보내는 계좌</label><select id="f_from">${accOpts(defFrom)}</select></div>
+      <div class="fld"><label>받는 계좌</label><select id="f_to">${accOpts(defTo)}</select></div></div>
       <div class="fld"><label>분류 (선택)</label><select id="f_cat"><option value="">-</option>${catOpts('이체',t?.cat)}</select></div>
       <p class="mut">💡 이체는 자산 이동이라 총자산은 변하지 않아요. 카드 상환도 이걸로 하세요(받는 계좌=신용카드).</p>`;
   }
@@ -467,6 +472,9 @@ function saveTx(id){
   else{rec.from=val('f_from');rec.to=val('f_to');if(rec.from===rec.to){toast('다른 계좌를 선택하세요');return}}
   if(id){const t=db.transactions.find(x=>x.id===id);Object.assign(t,rec)}
   else{rec.id=uid();db.transactions.push(rec)}
+  db.settings=db.settings||{};
+  if(rec.from)db.settings.lastFrom=rec.from;
+  if(rec.to)db.settings.lastTo=rec.to;
   save();closeModal();render();toast(id?'수정했어요':'저장했어요');
 }
 function delTx(id){db.transactions=db.transactions.filter(t=>t.id!==id);save();closeModal();render();toast('삭제했어요')}
