@@ -113,6 +113,12 @@ canvas{max-width:100%}
 .searchbar input{flex:1;border:none;background:transparent;font-size:15px;color:var(--ink);outline:none;font-family:inherit}
 .searchbar button{border:none;background:var(--line);color:var(--sub);width:22px;height:22px;border-radius:50%;font-size:12px;flex:none}
 #searchSummary{font-size:12px;color:var(--brand);font-weight:700;margin:0 4px 8px;display:none}
+.period{background:var(--card);border-radius:12px;box-shadow:var(--shadow);padding:10px 12px;margin-bottom:10px}
+.period .chips{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+.period .two{margin-top:8px}
+.period .two input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px;font-size:14px;color:var(--ink);background:#fff;font-family:inherit}
+.ordbtn{border:1px solid var(--line);background:#fff;color:var(--sub);width:28px;height:22px;border-radius:6px;font-size:10px;line-height:1;padding:0}
+.ordbtn:disabled{opacity:.3}
 input[type=file]{display:none}
 </style>
 </head>
@@ -146,8 +152,21 @@ input[type=file]{display:none}
   <section class="view hidden" id="v-list">
     <div class="searchbar">
       <span class="si">🔍</span>
-      <input id="searchBox" placeholder="내용·카테고리·금액 검색 (전체 기간)" oninput="onSearch(this.value)" autocomplete="off">
+      <input id="searchBox" placeholder="내용·카테고리·금액 검색" oninput="onSearch(this.value)" autocomplete="off">
       <button id="searchClear" onclick="clearSearch()" style="display:none">✕</button>
+    </div>
+    <div class="period">
+      <div class="chips" id="periodChips">
+        <button class="chip on" data-p="all" onclick="setPeriod('all')">전체</button>
+        <button class="chip" data-p="1m" onclick="setPeriod('1m')">1개월</button>
+        <button class="chip" data-p="3m" onclick="setPeriod('3m')">3개월</button>
+        <button class="chip" data-p="6m" onclick="setPeriod('6m')">6개월</button>
+        <button class="chip" data-p="year" onclick="setPeriod('year')">올해</button>
+      </div>
+      <div class="two">
+        <input type="date" id="fromDate" onchange="onDateInput()" aria-label="시작일">
+        <input type="date" id="toDate" onchange="onDateInput()" aria-label="종료일">
+      </div>
     </div>
     <div id="searchSummary"></div>
     <div class="card"><div id="listBody"></div></div>
@@ -246,8 +265,16 @@ function seed(){
 }
 function uid(){return Math.random().toString(36).slice(2,9)}
 function iso(offset){const d=new Date();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)}
-function load(){try{const r=localStorage.getItem(DB_KEY);if(r){db=JSON.parse(r);return}}catch(e){}seed();save()}
+function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`}
+function load(){try{const r=localStorage.getItem(DB_KEY);if(r){db=JSON.parse(r);ensureOrd();return}}catch(e){}seed();ensureOrd();save()}
 function save(){localStorage.setItem(DB_KEY,JSON.stringify(db))}
+function ensureOrd(){
+  if(!db.transactions.some(t=>t.ord==null))return;
+  const sorted=db.transactions.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
+  sorted.forEach((t,i)=>t.ord=i+1);
+  save();
+}
+function nextOrd(){return db.transactions.reduce((m,t)=>Math.max(m,t.ord||0),0)+1}
 
 /* ---------- 계산 ---------- */
 const acc=id=>db.accounts.find(a=>a.id===id);
@@ -267,6 +294,9 @@ const wonS=n=>(n<0?'-':'')+'₩'+Math.abs(Math.round(n)).toLocaleString('ko-KR')
 let selMonth=(()=>{const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')})();
 let curView='home';
 let searchQuery='';
+let searchFrom='';
+let searchTo='';
+let reorderMode=false;
 
 function go(v){curView=v;
   document.querySelectorAll('.view').forEach(s=>s.classList.add('hidden'));
@@ -317,21 +347,40 @@ function renderHome(){
   });
   list.innerHTML=h;
 }
-function txRow(t){
+function txMeta(t){
   let sub='',cls='a-tr',sign='';
   if(t.type==='지출'){cls='a-exp';sign='-';sub=(t.cat?cat(t.cat)?.name:'')+' · '+(t.from?acc(t.from)?.name:'');}
   else if(t.type==='수입'){cls='a-inc';sign='+';sub=(t.cat?cat(t.cat)?.name:'')+' · '+(t.to?acc(t.to)?.name:'');}
   else{sub=(t.from?acc(t.from)?.name:'')+' → '+(t.to?acc(t.to)?.name:'');}
   if(t.fx)sub+=' · '+esc(t.fx);
-  return `<div class="tx" onclick="openTx('${t.id}')"><div><div class="li">${esc(t.memo||(t.type==='이체'?'이체':(t.cat?cat(t.cat)?.name:t.type)))}</div>
-    <div class="sub">${esc(sub)}</div></div><div class="amt ${cls}">${sign}${won(t.amount)}</div></div>`;
+  return {title:esc(t.memo||(t.type==='이체'?'이체':(t.cat?cat(t.cat)?.name:t.type))),sub:esc(sub),cls,sign};
+}
+function txRow(t){const m=txMeta(t);
+  return `<div class="tx" onclick="openTx('${t.id}')"><div style="min-width:0"><div class="li">${m.title}</div>
+    <div class="sub">${m.sub}</div></div><div class="amt ${m.cls}">${m.sign}${won(t.amount)}</div></div>`;
+}
+function reorderRow(t,isFirst,isLast){const m=txMeta(t);
+  return `<div class="tx"><div style="display:flex;flex-direction:column;gap:2px;margin-right:10px">
+    <button class="ordbtn" ${isFirst?'disabled':''} onclick="moveTx('${t.id}',-1)">▲</button>
+    <button class="ordbtn" ${isLast?'disabled':''} onclick="moveTx('${t.id}',1)">▼</button></div>
+    <div style="flex:1;min-width:0"><div class="li">${m.title}</div><div class="sub">${m.sub}</div></div>
+    <div class="amt ${m.cls}">${m.sign}${won(t.amount)}</div></div>`;
+}
+function toggleReorder(){reorderMode=!reorderMode;renderList()}
+function moveTx(id,dir){
+  const t=db.transactions.find(x=>x.id===id);if(!t)return;
+  const day=db.transactions.filter(x=>x.date===t.date).sort((a,b)=>(b.ord||0)-(a.ord||0));
+  const i=day.findIndex(x=>x.id===id),j=i+dir;
+  if(j<0||j>=day.length)return;
+  const other=day[j],tmp=t.ord;t.ord=other.ord;other.ord=tmp;
+  save();renderList();
 }
 function renderList(){
   const body=document.getElementById('listBody');
   const summary=document.getElementById('searchSummary');
   const clearBtn=document.getElementById('searchClear');
   const mn=document.getElementById('monthNav');
-  const searching=!!searchQuery;
+  const searching=!!searchQuery||!!searchFrom||!!searchTo;
   if(clearBtn)clearBtn.style.display=searching?'block':'none';
   if(mn)mn.style.visibility=searching?'hidden':'visible';
   let tx;
@@ -339,14 +388,18 @@ function renderList(){
     const q=searchQuery.toLowerCase();
     const num=searchQuery.replace(/[^0-9]/g,'');
     tx=db.transactions.filter(t=>{
+      if(searchFrom&&t.date<searchFrom)return false;
+      if(searchTo&&t.date>searchTo)return false;
+      if(!q)return true;
       const hay=[t.memo,t.fx,t.inst,t.cat?cat(t.cat)?.name:'',t.from?acc(t.from)?.name:'',t.to?acc(t.to)?.name:'',t.type].join(' ').toLowerCase();
       if(hay.includes(q))return true;
       if(num&&String(t.amount).includes(num))return true;
       return false;
     }).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     const exp=tx.filter(t=>t.type==='지출').reduce((s,t)=>s+t.amount,0);
+    const rangeLbl=(searchFrom||searchTo)?`${searchFrom||'처음'}~${searchTo||'오늘'} · `:'';
     summary.style.display='block';
-    summary.textContent=tx.length?`검색 ${tx.length}건 · 지출합계 ${won(exp)}`:'';
+    summary.textContent=tx.length?`${rangeLbl}${tx.length}건 · 지출합계 ${won(exp)}`:`${rangeLbl}결과 없음`;
   }else{
     summary.style.display='none';summary.textContent='';
     tx=monthTx(selMonth).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
@@ -354,17 +407,42 @@ function renderList(){
   if(!tx.length){body.innerHTML=searching?'<div class="empty">검색 결과가 없어요.</div>':'<div class="empty">이 달의 거래가 없어요.<br>아래 ＋ 버튼으로 추가하세요.</div>';return}
   const byDay={};tx.forEach(t=>{(byDay[t.date]=byDay[t.date]||[]).push(t)});
   let h='';
+  if(!searching){
+    h+=`<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:0 2px 8px">
+      ${reorderMode?'<span class="mut" style="margin:0 auto 0 2px">▲▼로 순서 조정 (같은 날짜 내)</span>':''}
+      <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:13px" onclick="toggleReorder()">${reorderMode?'✓ 완료':'↕ 순서 편집'}</button></div>`;
+  }
   Object.keys(byDay).sort((a,b)=>b.localeCompare(a)).forEach(d=>{
-    const items=byDay[d];
+    const items=byDay[d].slice().sort((a,b)=>(b.ord||0)-(a.ord||0));
     const dexp=items.filter(t=>t.type==='지출').reduce((s,t)=>s+t.amount,0);
     h+=`<div class="daygroup"><div class="dayhead"><span>${searching?fmtDayFull(d):fmtDay(d)}</span><span>지출 ${won(dexp)}</span></div>`;
-    items.forEach(t=>{h+=txRow(t)});
+    items.forEach((t,idx)=>{h+=(reorderMode&&!searching)?reorderRow(t,idx===0,idx===items.length-1):txRow(t)});
     h+='</div>';
   });
   body.innerHTML=h;
 }
 function onSearch(v){searchQuery=v.trim();renderList()}
-function clearSearch(){searchQuery='';const b=document.getElementById('searchBox');if(b)b.value='';renderList()}
+function clearSearch(){searchQuery='';searchFrom='';searchTo='';
+  const b=document.getElementById('searchBox');if(b)b.value='';
+  const f=document.getElementById('fromDate');if(f)f.value='';
+  const tt=document.getElementById('toDate');if(tt)tt.value='';
+  markPeriodChip('all');renderList();}
+function isoMonthsAgo(n){const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,10)}
+function setPeriod(p){
+  const to=iso(0);
+  if(p==='all'){searchFrom='';searchTo='';}
+  else if(p==='year'){searchFrom=new Date().getFullYear()+'-01-01';searchTo=to;}
+  else{searchFrom=isoMonthsAgo({'1m':1,'3m':3,'6m':6}[p]);searchTo=to;}
+  const f=document.getElementById('fromDate');if(f)f.value=searchFrom;
+  const tt=document.getElementById('toDate');if(tt)tt.value=searchTo;
+  markPeriodChip(p);renderList();
+}
+function onDateInput(){
+  const f=document.getElementById('fromDate'),tt=document.getElementById('toDate');
+  searchFrom=f?f.value:'';searchTo=tt?tt.value:'';
+  markPeriodChip((searchFrom||searchTo)?null:'all');renderList();
+}
+function markPeriodChip(p){document.querySelectorAll('#periodChips .chip').forEach(b=>b.classList.toggle('on',p!==null&&b.dataset.p===p))}
 let pieChart,barChart;
 function renderStat(){
   const tx=monthTx(selMonth).filter(t=>t.type==='지출');
@@ -471,7 +549,7 @@ function saveTx(id){
   else if(txType==='수입'){rec.to=val('f_to')}
   else{rec.from=val('f_from');rec.to=val('f_to');if(rec.from===rec.to){toast('다른 계좌를 선택하세요');return}}
   if(id){const t=db.transactions.find(x=>x.id===id);Object.assign(t,rec)}
-  else{rec.id=uid();db.transactions.push(rec)}
+  else{rec.id=uid();rec.ord=nextOrd();db.transactions.push(rec)}
   db.settings=db.settings||{};
   if(rec.from)db.settings.lastFrom=rec.from;
   if(rec.to)db.settings.lastTo=rec.to;
@@ -556,7 +634,7 @@ function exportXlsx(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(txRows),'거래');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(accRows),'계좌');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(catRows),'카테고리');
-  XLSX.writeFile(wb,`가계부_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb,`가계부_${stamp()}.xlsx`);
   toast('엑셀로 내보냈어요');
 }
 function importXlsx(file){
@@ -584,7 +662,7 @@ function importXlsx(file){
 }
 function exportJson(){
   const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`가계부백업_${new Date().toISOString().slice(0,10)}.json`;a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`가계부백업_${stamp()}.json`;a.click();
   toast('백업 파일을 저장했어요');
 }
 function importJson(file){
