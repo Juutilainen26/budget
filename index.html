@@ -540,6 +540,7 @@ function setTxType(type,t){
 }
 function val(id){const e=document.getElementById(id);return e?e.value:''}
 function fmtAmount(el){const v=el.value.replace(/[^0-9]/g,'');el.value=v?Number(v).toLocaleString('ko-KR'):''}
+function fmtAmountSigned(el){const neg=/^\s*-/.test(el.value);const v=el.value.replace(/[^0-9]/g,'');el.value=(neg?'-':'')+(v?Number(v).toLocaleString('ko-KR'):'')}
 function saveTx(id){
   const amount=Math.round(Number(String(val('f_amount')).replace(/[^0-9.-]/g,'')));
   if(!amount||amount<=0){toast('금액을 입력하세요');return}
@@ -581,7 +582,7 @@ function openAccEdit(id){
     <div class="fld"><label>계좌명</label><input id="a_name" value="${a?esc(a.name):''}" placeholder="예: ○○은행 입출금"></div>
     <div class="two"><div class="fld"><label>은행/기관</label><input id="a_bank" value="${a?esc(a.bank):''}" placeholder="예: ○○은행"></div>
       <div class="fld"><label>유형</label><select id="a_type">${types.map(t=>`<option ${a&&a.type===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
-    <div class="two"><div class="fld"><label>초기 잔액</label><input id="a_init" inputmode="numeric" value="${a?a.initial:0}"></div>
+    <div class="two"><div class="fld"><label>초기 잔액</label><input id="a_init" inputmode="numeric" oninput="fmtAmountSigned(this)" value="${a?Number(a.initial).toLocaleString('ko-KR'):0}"></div>
       <div class="fld"><label>통화</label><select id="a_cur">${curs.map(c=>`<option ${a&&a.currency===c?'selected':''}>${c}</option>`).join('')}</select></div></div>
     <div class="fld"><label>카드 결제일 (신용카드만, 선택)</label><input id="a_pay" inputmode="numeric" value="${a&&a.payDay?a.payDay:''}" placeholder="예: 14"></div>
     <button class="btn" onclick="saveAcc('${a?a.id:''}')">저장</button>
@@ -611,7 +612,7 @@ function openCatEdit(id){
   modal(`<h3>${c?'카테고리 수정':'카테고리 추가'}</h3>
     <div class="fld"><label>이름</label><input id="c_name" value="${c?esc(c.name):''}"></div>
     <div class="fld"><label>종류</label><select id="c_kind">${kinds.map(k=>`<option ${c&&c.kind===k?'selected':''}>${k}</option>`).join('')}</select></div>
-    <div class="fld"><label>월 예산 (지출 카테고리, 선택)</label><input id="c_bud" inputmode="numeric" value="${c&&c.budget?c.budget:''}" placeholder="0"></div>
+    <div class="fld"><label>월 예산 (지출 카테고리, 선택)</label><input id="c_bud" inputmode="numeric" oninput="fmtAmount(this)" value="${c&&c.budget?Number(c.budget).toLocaleString('ko-KR'):''}" placeholder="0"></div>
     <button class="btn" onclick="saveCat('${c?c.id:''}')">저장</button>
     ${c?`<button class="btn danger" onclick="delCat('${c.id}')">삭제</button>`:''}`);
 }
