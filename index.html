@@ -623,7 +623,25 @@ function saveCat(id){
   save();closeModal();openManageCat();toast('저장했어요');render();
 }
 function delCat(id){db.categories=db.categories.filter(c=>c.id!==id);save();closeModal();openManageCat();toast('삭제했어요');render()}
-function openBudgetEdit(){openManageCat()}
+function openBudgetEdit(){
+  const cats=db.categories.filter(c=>c.kind==='지출').sort((a,b)=>a.sort-b.sort);
+  let h='<h3>예산 설정</h3><p class="mut" style="text-align:center;margin:-4px 0 14px">카테고리별 월 한도를 입력하세요.<br>비우거나 0으로 두면 예산 없음이에요.</p>';
+  cats.forEach(c=>{
+    h+=`<div style="display:flex;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid var(--line)">
+      <span style="flex:1;font-size:15px;font-weight:600">${esc(c.name)}</span>
+      <input id="bud_${c.id}" inputmode="numeric" oninput="fmtAmount(this)" value="${c.budget?Number(c.budget).toLocaleString('ko-KR'):''}" placeholder="0"
+        style="width:140px;text-align:right;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;font-family:inherit;color:var(--ink)"></div>`;
+  });
+  h+='<button class="btn" style="margin-top:14px" onclick="saveBudgets()">저장</button>';
+  modal(h);
+}
+function saveBudgets(){
+  db.categories.filter(c=>c.kind==='지출').forEach(c=>{
+    const el=document.getElementById('bud_'+c.id);
+    if(el)c.budget=Math.round(Number(String(el.value).replace(/[^0-9.-]/g,''))||0);
+  });
+  save();closeModal();render();toast('예산을 저장했어요');
+}
 
 /* ---------- 백업 ---------- */
 function exportXlsx(){
