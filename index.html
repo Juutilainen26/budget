@@ -269,7 +269,8 @@ function seed(){
   db={accounts,categories:cats,transactions,settings:{}};
 }
 function uid(){return Math.random().toString(36).slice(2,9)}
-function iso(offset){const d=new Date();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)}
+function localISO(d){const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`}
+function iso(offset){const d=new Date();d.setDate(d.getDate()+offset);return localISO(d)}
 function stamp(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`}
 function load(){try{const r=localStorage.getItem(DB_KEY);if(r){db=JSON.parse(r);ensureOrd();return}}catch(e){}seed();ensureOrd();save()}
 function save(){localStorage.setItem(DB_KEY,JSON.stringify(db))}
@@ -432,7 +433,7 @@ function clearSearch(){searchQuery='';searchFrom='';searchTo='';
   const f=document.getElementById('fromDate');if(f)f.value='';
   const tt=document.getElementById('toDate');if(tt)tt.value='';
   markPeriodChip('all');renderList();}
-function isoMonthsAgo(n){const d=new Date();d.setMonth(d.getMonth()-n);return d.toISOString().slice(0,10)}
+function isoMonthsAgo(n){const d=new Date();d.setMonth(d.getMonth()-n);return localISO(d)}
 function setPeriod(p){
   const to=iso(0);
   if(p==='all'){searchFrom='';searchTo='';}
