@@ -338,8 +338,8 @@ function renderHome(){
       <div class="bk">미결제 잔액 ${won(owed)}${c.payDay?' · 결제일 '+c.payDay+'일':''}</div></div>
       <button class="btn sec" style="width:auto;padding:9px 12px" onclick="openSettle('${c.id}')">상환 입력</button></div>
       <div class="row2" style="margin-top:12px">
-        <div class="mini" style="background:var(--bg)"><div class="l" style="color:var(--sub)">전월 사용액</div><div class="v">${won(last)}</div></div>
-        <div class="mini" style="background:var(--bg)"><div class="l" style="color:var(--sub)">이번달 사용액</div><div class="v">${won(now)}</div></div>
+        <div class="mini" style="background:var(--bg);cursor:pointer" onclick="openCardDetail('${c.id}','${prev}','전월')"><div class="l" style="color:var(--sub)">전월 사용액 ›</div><div class="v">${won(last)}</div></div>
+        <div class="mini" style="background:var(--bg);cursor:pointer" onclick="openCardDetail('${c.id}','${selMonth}','이번달')"><div class="l" style="color:var(--sub)">이번달 사용액 ›</div><div class="v">${won(now)}</div></div>
       </div></div>`;
   });
   document.getElementById('cardStatus').innerHTML=ch;
@@ -505,6 +505,17 @@ function fmtDayFull(d){const[y,m,dd]=d.split('-');const w=['일','월','화','�
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600)}
 function closeModal(){document.getElementById('modalRoot').innerHTML=''}
 function modal(html){document.getElementById('modalRoot').innerHTML=`<div class="sheet-bg" onclick="if(event.target===this)closeModal()"><div class="sheet"><button class="close" onclick="closeModal()">✕</button>${html}</div></div>`}
+function openCardDetail(cardId,ym,label){
+  const c=acc(cardId);
+  const tx=db.transactions.filter(t=>t.type==='지출'&&t.from===cardId&&ymOf(t.date)===ym)
+    .sort((a,b)=>b.date.localeCompare(a.date)||(b.ord||0)-(a.ord||0));
+  const tot=tx.reduce((s,t)=>s+t.amount,0);
+  const mm=Number(ym.split('-')[1]);
+  const body=tx.length?tx.map(t=>txRow(t)).join(''):'<div class="empty">이 달의 카드 사용 내역이 없어요.</div>';
+  modal(`<h3>💳 ${esc(c?.name||'카드')} · ${mm}월 사용내역</h3>
+    <div class="bk" style="margin-bottom:10px">${label} · ${tx.length}건 · 합계 ${won(tot)}</div>
+    ${body}`);
+}
 
 /* ---------- 거래 입력 ---------- */
 let txType='지출';
